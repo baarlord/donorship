@@ -3,16 +3,21 @@
 namespace Baarlord\DonorShip;
 
 use Bitrix\Main\Config\Option;
-use Baarlord\DonorShip\Manager;
 
 class Handler
 {
     public static $images = [];
 
-    function replacePathImgFromDonor(&$content)
+
+    public static function replacePathImgFromDonor(&$content): void
     {
-        $pattern = '/(?:(?:<img.*?src=[\'\"])|(?:url\([\'\"]?))(.*?)(?:(?:[\'\"].*?>)|(?:[\'\"]?\)))/is';
-        $donor = Option::get(Manager::$moduleId, 'DONOR', '');
+        $handler = new Handler();
+        if (!$handler->canUseDonor()) {
+            return;
+        }
+
+        $pattern = $handler->getImgPattern();
+        $donor = $handler->getDonor();
 
         preg_match_all(
             $pattern,
@@ -21,45 +26,57 @@ class Handler
         );
 
         foreach ($matches[1] as $item) {
-            if (!in_array($item, self::$images)) {
-
-                self::preparePath($item);
-
-                if (!file_exists($_SERVER['DOCUMENT_ROOT'] . $item)) {
-
-                    if (self::isAbsolutePath($item)) {
-                        continue;
-                    }
-
-                    if (strpos($item, $donor) === false) {
-                        $content = str_replace($item, $donor . $item, $content);
-                    }
-                    self::$images[] = $item;
-                }
+            $originalItem = $item;
+            if (in_array($originalItem, self::$images)) {
+                continue;
             }
+
+            $handler->preparePath($item);
+
+            if (file_exists(dirname(__DIR__, 4) . $item)) {
+                continue;
+            }
+
+            if ($handler->isAbsolutePath($item)) {
+                continue;
+            }
+
+            if (strpos($item, $donor) !== false) {
+                continue;
+            }
+            $content = str_replace($item, $donor . $item, $content);
+            self::$images[] = $originalItem;
         }
     }
 
-    public static function preparePath(&$path)
+    private function canUseDonor(): bool
     {
-        $domain = $_SERVER['HTTP_HOST'];
-
-        if (strpos($path, $domain) !== false) {
-            $path = str_replace(array('//', 'http://', 'https://', $domain), '', $path);
-        }
+        $canUse = Option::get('baarlord.donorship', 'USE_DONOR', 'N');
+        return $canUse === 'Y';
     }
 
-    public static function isAbsolutePath($path)
+    private function getImgPattern(): string
     {
-        if (substr($path, 0, 2) === '//') {
-            return true;
-        }
+        return '/(?:(?:<img.*?src=[\'\"])|(?:url\([\'\"]?))(.*?)(?:(?:[\'\"].*?>)|(?:[\'\"]?\)))/is';
+    }
 
-        if (substr($path, 0, 4) === 'http') {
-            return true;
-        }
+    private function getDonor(): string
+    {
+        return Option::get('baarlord.donorship', 'DONOR', '');
+    }
 
-        return false;
+    private function preparePath(&$path): void
+    {
+        $domain = Option::get('main', 'server_name', '');
+        if (strpos($path, $domain) === false) {
+            return;
+        }
+        $path = str_replace(['//', 'http://', 'https://', $domain], '', $path);
+    }
+
+    private function isAbsolutePath($path): bool
+    {
+        return ((substr($path, 0, 2) === '//') || (substr($path, 0, 4) === 'http'));
     }
 
 }

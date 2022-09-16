@@ -1,24 +1,22 @@
 <?php
 defined('B_PROLOG_INCLUDED') || die;
 
+use Baarlord\DonorShip\Manager;
+use Bitrix\Main\ArgumentNullException;
+use Bitrix\Main\ArgumentOutOfRangeException;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\ModuleManager;
 use Bitrix\Main\EventManager;
 use Bitrix\Main\Config\Option;
 use Baarlord\DonorShip\Handler;
 
-Class baarlord_donorship extends CModule
+class baarlord_donorship extends CModule
 {
-    var $MODULE_ID = 'baarlord.donorship';
-    var $MODULE_NAME;
-    var $MODULE_VERSION;
-    var $MODULE_VERSION_DATE;
-    var $MODULE_DESCRIPTION;
-
-    function __construct()
+    public function __construct()
     {
         $arModuleVersion = array();
         include(dirname(__FILE__) . '/version.php');
+        $this->MODULE_ID = 'baarlord.donorship';
         $this->MODULE_VERSION = $arModuleVersion['VERSION'];
         $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
         $this->MODULE_NAME = Loc::getMessage('BAARLORD_DONORSHIP_REG_MODULE_NAME');
@@ -27,45 +25,35 @@ Class baarlord_donorship extends CModule
         $this->PARTNER_URI = Loc::getMessage('BAARLORD_DONORSHIP_PARTNER_URI');
     }
 
-    function DoInstall()
+    public function DoInstall()
     {
         try {
-            $this->registerEvents();
+            $this->InstallEvents();
             ModuleManager::registerModule($this->MODULE_ID);
             Option::set($this->MODULE_ID, 'VERSION_DB', $this->versionToInt());
-        } catch (\Exception $e) {
+        } catch (ArgumentOutOfRangeException $e) {
             global $APPLICATION;
             $APPLICATION->ThrowException($e->getMessage());
-            return false;
         }
     }
 
-    function DoUninstall()
+    public function DoUninstall()
     {
         try {
             $this->UnInstallEvents();
-            $this->unRegisterEvents();
+            $this->UnInstallEvents();
             Option::delete($this->MODULE_ID, array('VERSION_DB', SITE_ID));
             ModuleManager::unRegisterModule($this->MODULE_ID);
-        } catch (\Exception $e) {
+        } catch (ArgumentNullException $e) {
             global $APPLICATION;
             $APPLICATION->ThrowException($e->getMessage());
-            return false;
         }
     }
 
-    function registerEvents()
+    public function InstallEvents()
     {
         $eventManager = EventManager::getInstance();
-        $eventManager->registerEventHandlerCompatible(
-            'main',
-            'OnProlog',
-            $this->MODULE_ID,
-            Manager::class,
-            'donorshipInit',
-            1
-        );
-        $eventManager->registerEventHandlerCompatible(
+        $eventManager->registerEventHandler(
             'main',
             'OnEndBufferContent',
             $this->MODULE_ID,
@@ -75,19 +63,20 @@ Class baarlord_donorship extends CModule
         );
     }
 
-    function unRegisterEvents()
+    public function UnInstallEvents()
     {
         $eventManager = EventManager::getInstance();
         $eventManager->unRegisterEventHandler(
             'main',
-            'OnProlog',
+            'OnEndBufferContent',
             $this->MODULE_ID,
-            Manager::class,
-            'donorshipInit'
+            Handler::class,
+            'replacePathImgFromDonor',
+            1
         );
     }
 
-    private function versionToInt()
+    private function versionToInt(): int
     {
         return intval(preg_replace('/[^0-9]+/i', '', $this->MODULE_VERSION_DATE));
     }
